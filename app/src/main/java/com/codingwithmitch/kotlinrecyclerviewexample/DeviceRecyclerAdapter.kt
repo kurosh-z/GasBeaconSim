@@ -22,7 +22,7 @@ class DeviceRecyclerAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>()
     private var items: List<Device> = ArrayList()
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
-        return BlogViewHolder(
+        return DeviceViewHolder(
             LayoutInflater.from(parent.context).inflate(R.layout.layout_blog_list_item, parent, false)
         )
     }
@@ -30,8 +30,8 @@ class DeviceRecyclerAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>()
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when(holder) {
 
-            is BlogViewHolder -> {
-                holder.bind(items.get(position))
+            is DeviceViewHolder -> {
+                holder.bind(items[position])
             }
 
         }
@@ -46,12 +46,13 @@ class DeviceRecyclerAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>()
 
     }
 
-    class BlogViewHolder
+    class DeviceViewHolder
     constructor(
         itemView: View
     ): RecyclerView.ViewHolder(itemView){
 
 //        val blog_image = itemView.blog_image
+
         val deviceId = itemView.device_id
         val devicePayload = itemView.tvDevicePayload
 
@@ -63,8 +64,8 @@ class DeviceRecyclerAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>()
 
             Glide.with(itemView.context)
                 .applyDefaultRequestOptions(requestOptions)
-            deviceId.setText(device.deviceId)
-            devicePayload.setText(device.payload)
+            deviceId.text = device.deviceId
+            devicePayload.text = device.payload
 
         }
 

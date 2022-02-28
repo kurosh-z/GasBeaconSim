@@ -1,4 +1,5 @@
 package com.codingwithmitch.kotlinrecyclerviewexample
+import android.Manifest
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -10,8 +11,25 @@ import com.codingwithmitch.kotlinrecyclerviewexample.manager.MQTTmanager
 import kotlinx.android.synthetic.main.activity_main.*
 import java.util.concurrent.TimeUnit
 import android.widget.Toast
+import com.codingwithmitch.kotlinrecyclerviewexample.manager.GpsUtils
 import com.codingwithmitch.kotlinrecyclerviewexample.models.Device
+import com.google.android.gms.location.*
 import com.google.gson.GsonBuilder
+import androidx.core.app.ActivityCompat
+
+import android.content.pm.PackageManager
+import android.location.Location
+import com.google.android.gms.tasks.OnSuccessListener
+import androidx.annotation.NonNull
+
+import android.annotation.SuppressLint
+import android.app.Activity
+
+import android.content.Intent
+
+
+
+
 
 
 
@@ -32,6 +50,22 @@ class MainActivity : AppCompatActivity() {
     private lateinit var data: ArrayList<Device>
     private lateinit var deviceAdapter: DeviceRecyclerAdapter
     private val mainHandler = Handler()
+
+
+
+    private lateinit var  mFusedLocationClient: FusedLocationProviderClient
+    private lateinit var locationCallback: LocationCallback
+    private val locationRequestCode = 1000
+    private var latitude :kotlin.Double = 0.0
+    private  var longitude:kotlin.Double = 0.0
+    private lateinit var locationRequest: LocationRequest
+    private var isGPS = false
+    private var isContinue= true
+
+
+
+
+
 
 
     private val backgroundTask = object : Runnable {
@@ -67,6 +101,48 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         initRecyclerView()
+        //init gps
+
+        mFusedLocationClient= LocationServices.getFusedLocationProviderClient(this);
+        locationRequest = LocationRequest.create();
+        locationRequest.priority = LocationRequest.PRIORITY_HIGH_ACCURACY;
+        locationRequest.interval = 10 * 1000; // 10 seconds
+        locationRequest.fastestInterval = 5 * 1000; // 5 seconds
+
+        GpsUtils(this.applicationContext).turnGPSOn(object : GpsUtils.onGpsListener {
+            override fun gpsStatus(isGPSEnable: Boolean) {
+                // turn on GPS
+                isGPS = isGPSEnable
+            }
+        })
+
+        if (!isGPS) {
+            Toast.makeText(this@MainActivity, "Please turn on GPS", Toast.LENGTH_SHORT).show();
+        }
+
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                if (locationResult == null) {
+                    return
+                }
+                for (location in locationResult.locations) {
+                    if (location != null) {
+                        latitude = location.latitude
+                        longitude = location.longitude
+
+                    }
+                }
+            }
+        }
+        getLocation();
+
+        //finished gps stuff
+
+
+
+
+
+
         addDataSet();
         mqttManager = MQTTmanager(connectionParams, applicationContext);
         mqttManager!!.connect();
@@ -78,7 +154,93 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-        @RequiresApi(Build.VERSION_CODES.O)
+    private fun getLocation() {
+        if (ActivityCompat.checkSelfPermission(
+                this@MainActivity,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+            && ActivityCompat.checkSelfPermission(
+                this@MainActivity,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this@MainActivity,
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                ),
+                AppConstants.LOCATION_REQUEST
+            )
+        } else {
+            if (isContinue) {
+                mFusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, null)
+            } else {
+                mFusedLocationClient.lastLocation.addOnSuccessListener(
+                    this@MainActivity
+                ) { location: Location? ->
+                    if (location != null) {
+                        latitude = location.latitude
+                        longitude = location.longitude
+
+                    } else {
+                        mFusedLocationClient.requestLocationUpdates(
+                            locationRequest,
+                            locationCallback,
+                            null
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String?>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when (requestCode) {
+            1000 -> {
+
+                // If request is cancelled, the result arrays are empty.
+                if (grantResults.size > 0
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED
+                ) {
+                    if (isContinue) {
+                        mFusedLocationClient.requestLocationUpdates(
+                            locationRequest,
+                            locationCallback,
+                            null
+                        )
+                    } else {
+                        mFusedLocationClient.lastLocation.addOnSuccessListener(
+                            this@MainActivity
+                        ) { location: Location? ->
+                            if (location != null) {
+                                latitude = location.latitude
+                                longitude = location.longitude
+
+                            } else {
+                                mFusedLocationClient.requestLocationUpdates(
+                                    locationRequest,
+                                    locationCallback,
+                                    null
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Toast.makeText(this, "Permission denied", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+
+    @RequiresApi(Build.VERSION_CODES.O)
     private fun addDataSet(){
          data = DataSource.createDataSet()
         deviceAdapter.submitList(data)
@@ -112,6 +274,8 @@ class MainActivity : AppCompatActivity() {
 
         }
         allMeasurements.put("packet_Counter", packetCounter)
+        allMeasurements.put("latitude", latitude)
+        allMeasurements.put("longitude", longitude)
         var  dataToSend:String= toJson(allMeasurements);
         return dataToSend
     }
@@ -124,46 +288,17 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-//    @RequiresApi(Build.VERSION_CODES.O)
-//    override fun onResume() {
-//        if () {
-//
-//            handler!!.postDelayed(Runnable {
-//                handler!!.postDelayed(runnable, delay.toLong())
-//
-//                if (mqttManager.connected) {
-//
-//                    val msg = prepareData()
-//                    Toast.makeText(
-//                        this@MainActivity, "Measurements are Updated",
-//                        Toast.LENGTH_SHORT
-//                    ).show()
-//
-//
-//                    if (msg != null) {
-//                        mqttManager.publish(msg)
-//
-//                        Handler().postDelayed({
-//                            Toast.makeText(
-//                                this@MainActivity, "Measurements are Published: $packetCounter",
-//                                Toast.LENGTH_SHORT
-//                            ).show()
-//                        }, 3000)
-//
-//                    };
-//
-//
-//                } else {
-//                    mqttManager.connect()
-//                }
-//
-//
-//
-//            }.also { runnable = it }, delay.toLong())
-//        }
-//            super.onResume()
-//
-//    }
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode == RESULT_OK) {
+            if (requestCode == AppConstants.GPS_REQUEST) {
+                isGPS = true // flag maintain before get location
+            }
+        }
+    }
+
+
+
 
 
 
